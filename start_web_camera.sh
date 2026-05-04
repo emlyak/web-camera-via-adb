@@ -187,8 +187,24 @@ else
     no_audio="--no-audio"
 fi
 
+rotation=0
+while true; do
+    read -p "Input rotation: " input
+    
+    if [ -z "$input" ]; then
+        break
+    fi
+    
+    if [[ "$input" =~ ^[0-9]+$ ]] && [ "$input" -ge 0 ] && [ "$input" -le 360 ]; then
+        rotation=$input
+        break
+    else
+        echo "Incorrect value"
+    fi
+done
+
 read -p "Additional flags (if you know what are you doing): " additional_flags
 
 echo "------------------------------------------------------"
 
-scrcpy --v4l2-sink=/dev/video22 --video-source=camera $no_audio $no_window -s $selected_id --camera-size=1920x1080 --camera-id=$CAMERA_ID --camera-fps=$selected --render-driver=opengl $additional_flags
+scrcpy --v4l2-sink=/dev/video22 --video-source=camera $no_audio $no_window -s $selected_id --camera-size=1920x1080 --camera-id=$CAMERA_ID --camera-fps=$selected --render-driver=opengl --angle=$rotation $additional_flags
