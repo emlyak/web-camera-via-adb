@@ -1,4 +1,4 @@
-#!/bin/bash
+!/bin/bash
 
 ask_yes_no() {
     local prompt="$1"
@@ -45,28 +45,31 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-connection_over_wifi=-1
-if ask_yes_no "Do you want to connect over wifi?"; then
+
+declare selected_id
+
+search_by_wifi() {
+    echo "------------------------------------------------------"
     echo "Try to connect..."
     connected=-1
     port=5555
+    count=0
     for i in {100..110}; do
-        if adb connect 192.168.0.$i:$port | grep -q "connected to "; then
+        if adb connect 192.168.0.$i:$port | grep -q "^connected to "; then
             connected=1
-            echo "Device has been connected"
-            break
+            ((count++))
         fi
     done
-    
-    if [ $connected -ne 1 ]; then
-        echo "Connction over wifi has been fault."
+
+    if [ $count -eq 0 ]; then
+        echo "Device not found"
         echo "Connect device by USB. Press Enter to continue"
         read
         ip=""
         while true; do
             ip=$(adb shell ip addr show wlan0 | grep -oP 'inet \K[\d.]+')
             if [ -z "$ip" ]; then
-                echo "Подключение не обнаружено. Переподсоедените устройство"
+                echo "Device not detected. Reconnect usb"
             else
                 break
             fi
@@ -76,43 +79,86 @@ if ask_yes_no "Do you want to connect over wifi?"; then
         echo "You can disconnect usb. Press Enter to continue"
         adb $ip:$port
         if adb $ip:$port | grep -q "connected to "; then
-            connected=1
-            echo "Device has been connected"
+            ((count++))
         else
             echo "Connceting failed"
             exit 1
         fi
     fi
-fi
+    echo "$count devices found and connected"
+    choose_device
+}
 
-output=$(adb devices 2>&1)
+choose_device() {
+    output=$(adb devices -l 2>&1)
 
-# Проверяем наличие устройств
-if ! echo "$output" | grep -q "device$"; then
-    echo "No devices detectes"
-    exit 1
-fi
+    declare -a device_ids
+    declare -a device_models
 
-if check_no_permissions "$output"; then
-    echo "You have no roots!"
-    echo "Try:"
-    echo "  1. Reconnect device to ypur PC"
-    echo "  2. Restart adb server: adb kill-server && adb start-server"
-    echo "  3. Check permissions on device"
-    exit 1
-fi
+    # Парсим вывод
+    while IFS= read -r line; do
+        # Пропускаем пустые строки и заголовок
+        if [[ -z "$line" ]] || [[ "$line" == "List of devices attached" ]]; then
+            continue
+        fi
+        
+        # Извлекаем ID устройства и модель
+        if [[ "$line" =~ ^([^[:space:]]+)[[:space:]]+device[[:space:]]+.*model:([^[:space:]]+) ]]; then
+            device_id="${BASH_REMATCH[1]}"
+            model="${BASH_REMATCH[2]}"
+            
+            device_ids+=("$device_id")
+            device_models+=("$model")
+        fi
+    done <<< "$output"
+
+    # Проверяем, есть ли устройства
+    if [ ${#device_ids[@]} -eq 0 ]; then
+        echo "No devices detectes"
+        exit 1
+    fi
+
+    # Выводим компактный список
+    echo "------------------------------------------------------"
+    echo "Detected devices:"
+    echo "  0. Start searching via wifi"
+    for i in "${!device_ids[@]}"; do
+        echo "  $((i+1)). ${device_ids[$i]} ${device_models[$i]}"
+    done
+
+    # Запрашиваем выбор
+    while true; do
+        read -p "Choose device [0-$((${#device_ids[@]}))]: " choice
+        
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ $choice -ge 1 ] && [ $choice -le ${#device_ids[@]} ]; then
+            index=$(($choice-1))
+            selected_id="${device_ids[$index]}"
+            selected_model="${device_models[$index]}"
+            echo "Selected device: $selected_id"
+            break
+        else
+            if [ $choice -eq 0 ]; then
+                search_by_wifi
+            fi
+            echo "Number is out of range [0-${#device_ids[@]}]"
+        fi
+    done
+}
+
+choose_device
 
 if [ -f /dev/video22 ]; then
-    echo "Creating virtual video device"
+    echo "Creating virtual video device..."
     sudo modprobe v4l2loopback devices=1 video_nr=22 exclusive_caps=1 card_label="Virtual Webcam"
 fi
 
-scrcpy --list-cameras
+echo "------------------------------------------------------"
+scrcpy --list-cameras -s $selected_id
 
 read -p "Enter your camera id: " CAMERA_ID
 
-fps_list=($(scrcpy --list-cameras | grep "camera-id=$CAMERA_ID" | grep -oP 'fps=\[\K[0-9, ]+' | tr ',' ' '))
-
+echo "------------------------------------------------------"
+fps_list=($(scrcpy --list-cameras -s $selected_id | grep "camera-id=$CAMERA_ID" | grep -oP 'fps=\[\K[0-9, ]+' | tr ',' ' '))
 echo "FPS for camera $CAMERA_ID:"
 for i in "${!fps_list[@]}"; do
     echo "$((i)). ${fps_list[$i]}"
@@ -143,4 +189,6 @@ fi
 
 read -p "Additional flags (if you know what are you doing): " additional_flags
 
-scrcpy --v4l2-sink=/dev/video22 --video-source=camera $no_audio $no_window --camera-size=1920x1080 --camera-id=$CAMERA_ID --camera-fps=$selected --render-driver=opengl $additional_flags
+echo "------------------------------------------------------"
+
+scrcpy --v4l2-sink=/dev/video22 --video-source=camera $no_audio $no_window -s $selected_id --camera-size=1920x1080 --camera-id=$CAMERA_ID --camera-fps=$selected --render-driver=opengl $additional_flags
