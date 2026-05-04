@@ -126,4 +126,6 @@ else
     no_audio="--no-audio"
 fi
 
-scrcpy --v4l2-sink=/dev/video22 --video-source=camera $no_audio --camera-size=1920x1080 --camera-id=$CAMERA_ID --camera-fps=$selected $no_window --render-driver=opengl
+read -p "Additional flags (if you know what are you doing): " additional_flags
+
+scrcpy --v4l2-sink=/dev/video22 --video-source=camera $no_audio $no_window --camera-size=1920x1080 --camera-id=$CAMERA_ID --camera-fps=$selected --render-driver=opengl $additional_flags
