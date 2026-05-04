@@ -30,6 +30,21 @@ check_no_permissions() {
     fi
 }
 
+show_help() {
+    echo "Usage: $0"
+    echo "A small script that simplifies setting up an Android smartphone as a webcam."
+    echo "Used adb as instrument for getting access to camera"
+}
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -h|--help) 
+            show_help $0
+            exit 0 ;;
+    esac
+    shift
+done
+
 connection_over_wifi=-1
 if ask_yes_no "Do you want to connect over wifi?"; then
     echo "Try to connect..."
