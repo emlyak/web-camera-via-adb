@@ -189,7 +189,7 @@ fi
 
 rotation=0
 while true; do
-    read -p "Input rotation: " input
+    read -p "Input rotation (or left it empty): " input
     
     if [ -z "$input" ]; then
         break
