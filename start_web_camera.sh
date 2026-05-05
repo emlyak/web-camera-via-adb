@@ -1,4 +1,4 @@
-!/bin/bash
+#!/bin/bash
 
 ask_yes_no() {
     local prompt="$1"
@@ -47,21 +47,30 @@ done
 
 
 declare selected_id
+START_SEARCHING=100
 
 search_by_wifi() {
     echo "------------------------------------------------------"
-    echo "Try to connect..."
+    echo "Scanning on interface"
     connected=-1
     port=5555
-    count=0
-    for i in {100..110}; do
-        if adb connect 192.168.0.$i:$port | grep -q "^connected to "; then
-            connected=1
-            ((count++))
+    if [ $START_SEARCHING -gt 255 ]; then
+        START_SEARCHING=1
+    fi
+    for ((i=$START_SEARCHING; i<=255; i++)) do
+        if ping -c 1 -W 2 192.168.0.$i > /dev/null 2>&1; then
+            echo "Found device on 192.168.0.$i. Try to connect"
+            if adb connect 192.168.0.$i:$port | grep -q "^connected to "; then
+                connected=1
+                echo "Connected to 192.168.0.$i"
+                START_SEARCHING=$(($i+1))
+                break;
+            else 
+                echo "Connecting failed"
+            fi
         fi
     done
-
-    if [ $count -eq 0 ]; then
+    if [ $connected -eq 0 ]; then
         echo "Device not found"
         echo "Connect device by USB. Press Enter to continue"
         read
@@ -85,7 +94,6 @@ search_by_wifi() {
             exit 1
         fi
     fi
-    echo "$count devices found and connected"
     choose_device
 }
 
@@ -112,16 +120,10 @@ choose_device() {
         fi
     done <<< "$output"
 
-    # Проверяем, есть ли устройства
-    if [ ${#device_ids[@]} -eq 0 ]; then
-        echo "No devices detectes"
-        exit 1
-    fi
-
     # Выводим компактный список
     echo "------------------------------------------------------"
     echo "Detected devices:"
-    echo "  0. Start searching via wifi"
+    echo "  0. Start searching via wifi (Up to 5 minutes)"
     for i in "${!device_ids[@]}"; do
         echo "  $((i+1)). ${device_ids[$i]} ${device_models[$i]}"
     done
