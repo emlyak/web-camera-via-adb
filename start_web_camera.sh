@@ -49,7 +49,6 @@ done
 
 
 declare selected_id
-START_SEARCHING=1
 
 search_by_wifi() {
     echo "------------------------------------------------------"
@@ -71,16 +70,12 @@ search_by_wifi() {
     echo "Scanning on interface"
     connected=-1
     port=5555
-    if [ $START_SEARCHING -gt 255 ]; then
-        START_SEARCHING=1
-    fi
-    for ((i=$START_SEARCHING; i<=255; i++)) do
-        if ping -c 1 -W 2 $network.$i > /dev/null 2>&1; then
+    for ((i=1; i<=255; i++)) do
+        if ping -c 1 -W 1 $network.$i > /dev/null 2>&1; then
             echo "Found device on $network.$i. Try to connect"
             if adb connect $network.$i:$port | grep -q "^connected to "; then
                 connected=1
                 echo "Connected to $network.$i"
-                START_SEARCHING=$(($i+1))
                 if ask_yes_no "Continue searching?"; then
                     continue
                 fi
@@ -90,6 +85,7 @@ search_by_wifi() {
             fi
         fi
     done
+    
     if [ $connected -eq 0 ]; then
         echo "Device not found"
         echo "Connect device by USB. Press Enter to continue"
@@ -115,6 +111,71 @@ search_by_wifi() {
         fi
     fi
     choose_device
+}
+
+other_staff() {
+    if [ -f /dev/video22 ]; then
+        echo "Creating virtual video device..."
+        sudo modprobe v4l2loopback devices=1 video_nr=22 exclusive_caps=1 card_label="Virtual Webcam"
+    fi
+
+    echo "------------------------------------------------------"
+    scrcpy --list-cameras -s $selected_id
+
+    read -p "Enter your camera id: " CAMERA_ID
+
+    echo "------------------------------------------------------"
+    fps_list=($(scrcpy --list-cameras -s $selected_id | grep "camera-id=$CAMERA_ID" | grep -oP 'fps=\[\K[0-9, ]+' | tr ',' ' '))
+    echo "FPS for camera $CAMERA_ID:"
+    for i in "${!fps_list[@]}"; do
+        echo "$((i)). ${fps_list[$i]}"
+    done
+
+    num=-1
+    max_value=$((${#fps_list[@]}-1))
+    while true; do
+        read -p "Choose FPS: " num
+        if [ $num -ge 0 ] && [ $num -le $max_value ]; then
+            break
+        fi
+        echo "Number is out of range [1-$max_value]"
+    done
+    selected=${fps_list[$num]}
+
+    if ask_yes_no "Enable window output (default is No)?"; then
+        no_window=""
+    else
+        no_window="--no-window"
+    fi
+
+    if ask_yes_no "Enable audio (default is No)?"; then
+        no_audio=""
+    else
+        no_audio="--no-audio"
+    fi
+
+    rotation=0
+    while true; do
+        read -p "Input rotation (or left it empty): " input
+        
+        if [ -z "$input" ]; then
+            break
+        fi
+        
+        if [[ "$input" =~ ^[0-9]+$ ]] && [ "$input" -ge 0 ] && [ "$input" -le 360 ]; then
+            rotation=$input
+            break
+        else
+            echo "Incorrect value"
+        fi
+    done
+
+    read -p "Additional flags (if you know what are you doing): " additional_flags
+
+    echo "------------------------------------------------------"
+
+    scrcpy --v4l2-sink=/dev/video22 --video-source=camera $no_audio $no_window -s $selected_id --camera-size=1920x1080 --camera-id=$CAMERA_ID --camera-fps=$selected --render-driver=opengl --angle=$rotation $additional_flags
+    exit 1
 }
 
 choose_device() {
@@ -157,7 +218,7 @@ choose_device() {
             selected_id="${device_ids[$index]}"
             selected_model="${device_models[$index]}"
             echo "Selected device: $selected_id"
-            break
+            other_staff
         else
             if [ $choice -eq 0 ]; then
                 search_by_wifi
@@ -169,64 +230,5 @@ choose_device() {
 
 choose_device
 
-if [ -f /dev/video22 ]; then
-    echo "Creating virtual video device..."
-    sudo modprobe v4l2loopback devices=1 video_nr=22 exclusive_caps=1 card_label="Virtual Webcam"
-fi
 
-echo "------------------------------------------------------"
-scrcpy --list-cameras -s $selected_id
 
-read -p "Enter your camera id: " CAMERA_ID
-
-echo "------------------------------------------------------"
-fps_list=($(scrcpy --list-cameras -s $selected_id | grep "camera-id=$CAMERA_ID" | grep -oP 'fps=\[\K[0-9, ]+' | tr ',' ' '))
-echo "FPS for camera $CAMERA_ID:"
-for i in "${!fps_list[@]}"; do
-    echo "$((i)). ${fps_list[$i]}"
-done
-
-num=-1
-max_value=$((${#fps_list[@]}-1))
-while true; do
-    read -p "Choose FPS: " num
-    if [ $num -ge 0 ] && [ $num -le $max_value ]; then
-        break
-    fi
-    echo "Number is out of range [1-$max_value]"
-done
-selected=${fps_list[$num]}
-
-if ask_yes_no "Enable window output (default is No)?"; then
-    no_window=""
-else
-    no_window="--no-window"
-fi
-
-if ask_yes_no "Enable audio (default is No)?"; then
-    no_audio=""
-else
-    no_audio="--no-audio"
-fi
-
-rotation=0
-while true; do
-    read -p "Input rotation (or left it empty): " input
-    
-    if [ -z "$input" ]; then
-        break
-    fi
-    
-    if [[ "$input" =~ ^[0-9]+$ ]] && [ "$input" -ge 0 ] && [ "$input" -le 360 ]; then
-        rotation=$input
-        break
-    else
-        echo "Incorrect value"
-    fi
-done
-
-read -p "Additional flags (if you know what are you doing): " additional_flags
-
-echo "------------------------------------------------------"
-
-scrcpy --v4l2-sink=/dev/video22 --video-source=camera $no_audio $no_window -s $selected_id --camera-size=1920x1080 --camera-id=$CAMERA_ID --camera-fps=$selected --render-driver=opengl --angle=$rotation $additional_flags
