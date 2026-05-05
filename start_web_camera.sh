@@ -47,7 +47,7 @@ done
 
 
 declare selected_id
-START_SEARCHING=100
+START_SEARCHING=1
 
 search_by_wifi() {
     echo "------------------------------------------------------"
