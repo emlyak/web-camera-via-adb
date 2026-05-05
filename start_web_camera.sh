@@ -55,7 +55,7 @@ search_by_wifi() {
     interfaces=$(ip -4 addr show | grep -oP '(?<=inet )[0-9.]+(?=/)' | nl)
 
     if [ -z "$interfaces" ]; then
-        echo "IPv4 адреса не найдены"
+        echo "IPv4 not found"
         exit 1
     fi
 
