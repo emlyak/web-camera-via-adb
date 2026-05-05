@@ -1,5 +1,7 @@
 #!/bin/bash
 
+trap "exit" INT
+
 ask_yes_no() {
     local prompt="$1"
     local answer
@@ -51,6 +53,21 @@ START_SEARCHING=1
 
 search_by_wifi() {
     echo "------------------------------------------------------"
+    interfaces=$(ip -4 addr show | grep -oP '(?<=inet )[0-9.]+(?=/)' | nl)
+
+    if [ -z "$interfaces" ]; then
+        echo "IPv4 адреса не найдены"
+        exit 1
+    fi
+
+    echo "Avaible IPv4:"
+    echo "$interfaces"
+
+    read -p "Choose interface: " choice
+    selected=$(echo "$interfaces" | sed -n "${choice}p" | awk '{print $2}')
+    network="${selected%.*}"
+
+    echo "------------------------------------------------------"
     echo "Scanning on interface"
     connected=-1
     port=5555
@@ -58,11 +75,11 @@ search_by_wifi() {
         START_SEARCHING=1
     fi
     for ((i=$START_SEARCHING; i<=255; i++)) do
-        if ping -c 1 -W 2 192.168.0.$i > /dev/null 2>&1; then
-            echo "Found device on 192.168.0.$i. Try to connect"
-            if adb connect 192.168.0.$i:$port | grep -q "^connected to "; then
+        if ping -c 1 -W 2 $network.$i > /dev/null 2>&1; then
+            echo "Found device on $network.$i. Try to connect"
+            if adb connect $network.$i:$port | grep -q "^connected to "; then
                 connected=1
-                echo "Connected to 192.168.0.$i"
+                echo "Connected to $network.$i"
                 START_SEARCHING=$(($i+1))
                 if ask_yes_no "Continue searching?"; then
                     continue
