@@ -64,6 +64,9 @@ search_by_wifi() {
                 connected=1
                 echo "Connected to 192.168.0.$i"
                 START_SEARCHING=$(($i+1))
+                if ask_yes_no "Continue searching?"; then
+                    continue
+                fi
                 break;
             else 
                 echo "Connecting failed"
