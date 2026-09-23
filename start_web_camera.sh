@@ -68,7 +68,7 @@ search_by_wifi() {
 
     echo "------------------------------------------------------"
     echo "Scanning on interface"
-    connected=-1
+    connected=0
     port=5555
     for ((i=1; i<=255; i++)) do
         if ping -c 1 -W 1 $network.$i > /dev/null 2>&1; then
@@ -114,18 +114,24 @@ search_by_wifi() {
 }
 
 other_staff() {
-    if [ -f /dev/video22 ]; then
-        echo "Creating virtual video device..."
-        sudo modprobe v4l2loopback devices=1 video_nr=22 exclusive_caps=1 card_label="Virtual Webcam"
+    if [ -f "/dev/video22" ]; then
+	 rm /dev/video22
     fi
 
+    modprobe -r v4l2loopback
+    echo "Creating virtual video device..."
+    modprobe v4l2loopback video_nr=22 exclusive_caps=1 card_label="Virtual Webcam"
     echo "------------------------------------------------------"
     scrcpy --list-cameras -s $selected_id
 
     read -p "Enter your camera id: " CAMERA_ID
 
     echo "------------------------------------------------------"
-    fps_list=($(scrcpy --list-cameras -s $selected_id | grep "camera-id=$CAMERA_ID" | grep -oP 'fps=\[\K[0-9, ]+' | tr ',' ' '))
+    fps_raw=$(scrcpy --list-cameras -s "$selected_id" 2>&1 \
+    | grep "camera-id=$CAMERA_ID" \
+    | grep -oP 'fps=\{\K[^}]+')
+    fps_list=(${fps_raw//,/})
+
     echo "FPS for camera $CAMERA_ID:"
     for i in "${!fps_list[@]}"; do
         echo "$((i)). ${fps_list[$i]}"
@@ -179,6 +185,11 @@ other_staff() {
 }
 
 choose_device() {
+
+    if [[ "${EUID}" -ne 0 ]]; then
+        echo "Restarting with sudo..."
+        exec sudo bash "$0" "$@"
+    fi
     output=$(adb devices -l 2>&1)
 
     declare -a device_ids
